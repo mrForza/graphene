@@ -1,1 +1,7 @@
 .git
+.prompts_custom
+.vscode
+.vs
+out
+.gitignore
+build
