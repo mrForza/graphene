@@ -12,6 +12,7 @@ endif()
 
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/algs/general/rb_tree)
+include_directories(${CMAKE_SOURCE_DIR}/algs/general/list)
 
 # Source files
 set(RB_TREE_SOURCES
@@ -40,6 +41,11 @@ FetchContent_MakeAvailable(googletest)
 # Test executable
 enable_testing()
 
+# Set output directory for test executables
+set(TEST_OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/tests)
+file(MAKE_DIRECTORY ${TEST_OUTPUT_DIR})
+
+# Red-Black Tree test
 add_executable(rb_tree_test
     algs/general/rb_tree/rb_tree_test.cpp
     ${RB_TREE_SOURCES}
@@ -50,5 +56,31 @@ target_link_libraries(rb_tree_test
     GTest::gtest_main
 )
 
+set_target_properties(rb_tree_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${TEST_OUTPUT_DIR}
+)
+
+# Doubly Linked List sources
+set(D_LIST_SOURCES
+    algs/general/list/d_list.cpp
+    algs/general/list/d_list.h
+)
+
+# Doubly Linked List test
+add_executable(d_list_test
+    algs/general/list/d_list_test.cpp
+    ${D_LIST_SOURCES}
+)
+
+target_link_libraries(d_list_test
+    GTest::gtest
+    GTest::gtest_main
+)
+
+set_target_properties(d_list_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${TEST_OUTPUT_DIR}
+)
+
 include(GoogleTest)
 gtest_discover_tests(rb_tree_test)
+gtest_discover_tests(d_list_test)
