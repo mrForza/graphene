@@ -13,6 +13,9 @@ endif()
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/algs/general/rb_tree)
 include_directories(${CMAKE_SOURCE_DIR}/algs/general/list)
+include_directories(${CMAKE_SOURCE_DIR}/algs/general/graph)
+include_directories(${CMAKE_SOURCE_DIR}/algs/interfaces)
+include_directories(${CMAKE_SOURCE_DIR}/algs/impls)
 
 # Source files
 set(RB_TREE_SOURCES
@@ -81,6 +84,37 @@ set_target_properties(d_list_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${TEST_OUTPUT_DIR}
 )
 
+# Shortest path algorithms tests
+add_executable(dijkstra_test
+    algs/impls/dijkstra_test.cpp
+    algs/impls/dijkstra.cpp
+)
+
+target_link_libraries(dijkstra_test
+    GTest::gtest
+    GTest::gtest_main
+)
+
+set_target_properties(dijkstra_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${TEST_OUTPUT_DIR}
+)
+
+add_executable(bellman_ford_test
+    algs/impls/bellman_ford_test.cpp
+    algs/impls/bellman_ford.cpp
+)
+
+target_link_libraries(bellman_ford_test
+    GTest::gtest
+    GTest::gtest_main
+)
+
+set_target_properties(bellman_ford_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${TEST_OUTPUT_DIR}
+)
+
 include(GoogleTest)
 gtest_discover_tests(rb_tree_test)
 gtest_discover_tests(d_list_test)
+gtest_discover_tests(dijkstra_test)
+gtest_discover_tests(bellman_ford_test)

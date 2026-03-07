@@ -4,11 +4,9 @@
 #include <cstddef>
 #include <vector>
 #include <utility>
+#include <type_traits>
 
 namespace graph {
-
-template<typename VertexData = void, typename EdgeWeight = int>
-class Graph;
 
 template<typename EdgeWeight = int>
 struct Edge {
@@ -33,7 +31,7 @@ struct Vertex {
     size_t id;
     VertexData data;
 
--    explicit Vertex(size_t id) : id(id), data{} {}
+    explicit Vertex(size_t id) : id(id), data{} {}
 
     template<typename T = VertexData>
     explicit Vertex(size_t id, typename std::enable_if<!std::is_void<T>::value, const T&>::type data)
@@ -50,8 +48,8 @@ struct Vertex<void> {
 
 template<typename EdgeWeight = int>
 struct Neighbor {
-    size_t vertex_id;   // Neighbor vertex ID
-    EdgeWeight weight;  // Edge weight
+    size_t vertex_id;
+    EdgeWeight weight;
 
     Neighbor(size_t vertex_id, EdgeWeight weight = EdgeWeight{})
         : vertex_id(vertex_id), weight(weight) {}
