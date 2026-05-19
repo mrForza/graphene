@@ -1,7 +1,6 @@
 #ifndef SMALLCPPPROGRAM_BMSSP_H
 #define SMALLCPPPROGRAM_BMSSP_H
 
-#include "graph_types.h"
 #include <vector>
 #include <queue>
 #include <set>
@@ -13,304 +12,768 @@
 #include <limits>
 #include <memory>
 #include <functional>
+#include <list>
+
+#include "graph_types.h"
 
 constexpr double INF = std::numeric_limits<double>::infinity();
+
 constexpr double EPS = 1e-9;
 
-class BlockLinkedList {
-public:
-    BlockLinkedList(const int M_, const double B_) : M(M_), B(B_) {}
-
-    void insert(const int key, const double value) {
-        if (!data.contains(key) || value < data[key]) {
-            data[key] = value;
-        }
-    }
-
-    void batch_prepend(const std::vector<std::pair<int, double>>& L) {
-        for (const auto& [key, value] : L) {
-            if (!data.contains(key) || value < data[key]) {
-                data[key] = value;
-            }
-        }
-    }
-
-    std::pair<std::vector<int>, double> pull() {
-        if (data.empty()) {
-            return {{}, B};
-        }
-
-        std::vector<std::pair<double, int>> sorted_items;
-        for (const auto& [key, value] : data) {
-            sorted_items.emplace_back(value, key);
-        }
-        std::sort(sorted_items.begin(), sorted_items.end());
-
-        std::vector<int> result;
-        double x = B;
-
-        const int count = std::min(M, static_cast<int>(sorted_items.size()));
-        for (int i = 0; i < count; i++) {
-            result.push_back(sorted_items[i].second);
-            data.erase(sorted_items[i].second);
-        }
-
-        if (!data.empty()) {
-            x = data.begin()->second;
-        }
-
-        return {result, x};
-    }
-
-    [[nodiscard]] bool is_empty() const {
-        return data.empty();
-    }
-private:
-    int M;
-    double B;
-    std::map<int, double> data;
+enum floyd_rivest_constants {
+  kQCap = 600,
 };
 
-class BMSSPSolver {
+template <class Compare>
+struct CompareRefType {
+  // Pass the comparator by lvalue reference. Or in debug mode, using a
+  // debugging wrapper that stores a reference.
+  using type = typename std::add_lvalue_reference<Compare>::type;
+};
+
+template <class Iter, class Compare,
+          class DiffType = typename std::iterator_traits<Iter>::difference_type>
+inline void floyd_rivest_select_loop(Iter begin, DiffType left, DiffType right,
+                                     DiffType k, Compare comp) {
+  while (right > left) {
+    DiffType size = right - left;
+    if (size > floyd_rivest_constants::kQCap) {
+      DiffType n = right - left + 1;
+      DiffType i = k - left + 1;
+
+      double z = log(n);
+      double s = 0.5 * exp(2 * z / 3);
+      double sd = 0.5 * sqrt(z * s * (n - s) / n);
+      if (i < n / 2) {
+        sd *= -1.0;
+      }
+      DiffType new_left =
+          std::max(left, static_cast<DiffType>(k - i * s / n + sd));
+      DiffType new_right =
+          std::min(right, static_cast<DiffType>(k + (n - i) * s / n + sd));
+      floyd_rivest_select_loop<Iter, Compare, DiffType>(begin, new_left,
+                                                        new_right, k, comp);
+    }
+    DiffType i = left;
+    DiffType j = right;
+
+    std::swap(begin[left], begin[k]);
+    const bool to_swap = comp(begin[left], begin[right]);
+    if (to_swap) {
+      std::swap(begin[left], begin[right]);
+    }
+    // Make sure that non copyable types compile.
+    const auto& t = to_swap ? begin[left] : begin[right];
+    while (i < j) {
+      std::swap(begin[i], begin[j]);
+      i++;
+      j--;
+      while (comp(begin[i], t)) {
+        i++;
+      }
+      while (comp(t, begin[j])) {
+        j--;
+      }
+    }
+
+    if (to_swap) {
+      std::swap(begin[left], begin[j]);
+    } else {
+      j++;
+      std::swap(begin[right], begin[j]);
+    }
+
+    if (j <= k) {
+      left = j + 1;
+    }
+    if (k <= j) {
+      right = j - 1;
+    }
+  }
+}
+
+template <class Iter, class Compare>
+inline void floyd_rivest_partial_sort(Iter begin, Iter mid, Iter end,
+                                      Compare comp) {
+  if (begin == end) return;
+  if (begin == mid) return;
+  using CompType = CompareRefType<Compare>::type;
+  using DiffType = std::iterator_traits<Iter>::difference_type;
+  floyd_rivest_select_loop<Iter, CompType>(
+      begin, DiffType{0}, static_cast<DiffType>(end - begin - 1),
+      static_cast<DiffType>(mid - begin - 1), comp);
+  // std::sort proved to be better than other sorts because of pivoting.
+  std::sort<Iter, CompType>(begin, mid, comp);
+}
+
+template <class Iter>
+inline void floyd_rivest_partial_sort(Iter begin, Iter mid, Iter end) {
+  typedef typename std::iterator_traits<Iter>::value_type T;
+  floyd_rivest_partial_sort(begin, mid, end, std::less<T>());
+}
+
+template <class Iter, class Compare>
+inline void floyd_rivest_select(Iter begin, Iter mid, Iter end, Compare comp) {
+  if (mid == end) return;
+  using CompType = CompareRefType<Compare>::type;
+  using DiffType = std::iterator_traits<Iter>::difference_type;
+  floyd_rivest_select_loop<Iter, CompType>(
+      begin, DiffType{0}, static_cast<DiffType>(end - begin - 1),
+      static_cast<DiffType>(mid - begin), comp);
+}
+
+template <class Iter>
+inline void floyd_rivest_select(Iter begin, Iter mid, Iter end) {
+  typedef typename std::iterator_traits<Iter>::value_type T;
+  floyd_rivest_select(begin, mid, end, std::less<T>());
+}
+
+
+template<typename uniqueDistT>
+class BlockingBasedHeap { // batch priority queue
+    template<typename K, typename V>
+    using hash_map = std::unordered_map<K, V>;
+    using elementT = std::pair<int, uniqueDistT>;
+
+    struct CompareUB {
+        template <typename It>
+        bool operator()(const std::pair<uniqueDistT, It>& a, const std::pair<uniqueDistT, It>& b) const {
+            if (a.first != b.first) return a.first < b.first;
+            return  addressof(*a.second) < addressof(*b.second);
+        }
+    };
+
+    typename std::list<std::list<elementT>>::iterator it_min;
+
+    std::list<std::list<elementT>> D0,D1;
+    std::set<std::pair<uniqueDistT,typename std::list<std::list<elementT>>::iterator>,CompareUB> UBs;
+
+    int M,size_;
+    uniqueDistT B;
+
+    hash_map<int, uniqueDistT> actual_value;
+    hash_map<int, std::pair<typename std::list<std::list<elementT>>::iterator, typename std::list<elementT>::iterator>> where_is0, where_is1;
+
 public:
-    explicit BMSSPSolver(Graph& g) : graph(g), db(g.n, INF), pred(g.n, -1), n(g.n) {
-        k = std::max(1, static_cast<int>(std::pow(n, 1.0 / 3.0)));
-        t = std::max(1, static_cast<int>(std::pow(n, 2.0 / 3.0)));
+
+    BlockingBasedHeap(int n): actual_value(n), where_is0(n), where_is1(n){} // O(n)
+
+    void initialize(int M_, uniqueDistT B_) { // O(1)
+        M = M_; B = B_;
+        D0 = {};
+        D1 = {std::list<elementT>()};
+        UBs = {make_pair(B_,D1.begin())};
+        size_ = 0;
+
+        actual_value.clear();
+        where_is0.clear(); where_is1.clear();
     }
 
-    std::pair<double, std::set<int>> bmssp(int level, double B, const std::set<int>& S) {
-        if (level == 0) {
-            return base_case(B, S);
-        }
-
-        auto [P, W] = find_pivots(B, S);
-
-        if (P.empty()) {
-            std::set<int> U;
-            for (int v : W) {
-                if (db[v] < B) {
-                    U.insert(v);
-                }
-            }
-            return {B, U};
-        }
-
-        int M = std::max(1, 1 << ((level - 1) * t));
-        BlockLinkedList D(M, B);
-
-        for (int x : P) {
-            D.insert(x, db[x]);
-        }
-
-        int i = 0;
-        double B_prime_prev = INF;
-        for (int x : P) {
-            B_prime_prev = std::min(B_prime_prev, db[x]);
-        }
-
-        std::set<int> U;
-        int threshold = k * (1 << (level * t));
-
-        int max_iterations = 1000;
-
-        while ((int)U.size() < threshold && !D.is_empty() && i < max_iterations) {
-            i++;
-
-            auto [S_i_vec, B_i] = D.pull();
-            std::set<int> S_i(S_i_vec.begin(), S_i_vec.end());
-
-            if (S_i.empty()) break;
-
-            auto [B_prime_i, U_i] = bmssp(level - 1, B_i, S_i);
-            U.insert(U_i.begin(), U_i.end());
-
-            std::vector<std::pair<int, double>> K;
-            for (int u : U_i) {
-                for (const Edge& e : graph.adj[u]) {
-                    if (relax_edge(u, e.to, e.weight)) {
-                        double new_val = db[u] + e.weight;
-                        if (B_i <= new_val && new_val < B) {
-                            D.insert(e.to, new_val);
-                        } else if (B_prime_i <= new_val && new_val < B_i) {
-                            K.emplace_back(e.to, new_val);
-                        }
-                    }
-                }
-            }
-
-            for (int x : S_i) {
-                if (B_prime_i <= db[x] && db[x] < B_i) {
-                    K.emplace_back(x, db[x]);
-                }
-            }
-            D.batch_prepend(K);
-
-            if (D.is_empty()) {
-                B_prime_prev = B;
-                break;
-            }
-
-            if (static_cast<int>(U.size()) >= threshold) {
-                B_prime_prev = B_prime_i;
-                break;
-            }
-        }
-
-        for (int v : W) {
-            if (db[v] < B_prime_prev) {
-                U.insert(v);
-            }
-        }
-
-        return {B_prime_prev, U};
+    int size(){
+        return size_;
     }
 
-    std::vector<double> solve_sssp(int source) {
-        db[source] = 0.0;
+    void insert(uniqueDistT x){ // O(lg(Block Numbers))
+        uniqueDistT b = x;
+        int a = get<2>(b);
 
-        int max_level = 1;
-        if (n > 10) {
-            max_level = std::max(1, std::min(3, static_cast<int>(std::ceil(std::log2(n) / t))));
+        // checking if exists
+        auto it_exist = actual_value.find(a);
+        int exist = (it_exist != actual_value.end());
+
+        if(exist && it_exist->second > b){
+            delete_(x);
+        }else if(exist){
+            return;
         }
 
-        auto [B_prime, U] = bmssp(max_level, INF, {source});
+        // Searching for the first block with UB which is >
+        auto it_UB_block = UBs.lower_bound({b,it_min});
+        auto [ub,it_block] = (*it_UB_block);
 
-        std::map<int, double> distances;
-        std::vector<double> res;
-        for (int v = 0; v < n; v++) {
-            if (db[v] < INF) {
-                distances[v] = db[v];
-                res.push_back(db[v]);
-            } else
-            {
-                distances[v] = std::numeric_limits<double>::infinity();
-            }
+        // Inserting key/value (a,b)
+        auto it = it_block->insert(it_block->end(),{a,b});
+        where_is1[a] = {it_block, it};
+        actual_value[a] = b;
+
+        size_++;
+
+        // Checking if exceeds the sixe limit M
+        if((*it_block).size() > M){
+            split(it_block);
         }
-
-        return res;
     }
 
-    [[nodiscard]] int get_k() const { return k; }
-    [[nodiscard]] int get_t() const { return t; }
+    void batchPrepend(const std::vector<uniqueDistT> &v){
+        std::list<elementT> l;
+        for(auto x: v){
+            l.push_back({get<2>(x),x});
+        }
+        batchPrepend(l);
+    }
+
+    std::pair<uniqueDistT, std::vector<int>> pull(){ // O(M)
+        std::vector<elementT> s0,s1;
+        s0.reserve(2 * M); s1.reserve(M);
+
+        auto it_block = D0.begin();
+        while(it_block != D0.end() && s0.size() <= M){ // O(M)
+            for (const auto& x : *it_block) s0.push_back(x);
+            it_block++;
+        }
+
+        it_block = D1.begin();
+        while(it_block != D1.end() && s1.size() <= M){   //O(M)
+            for (const auto& x : *it_block) s1.push_back(x);
+            it_block++;
+        }
+
+        if(s1.size() + s0.size() <= M){
+            std::vector<int> ret;
+            ret.reserve(s1.size()+s0.size());
+            for(auto [a,b] : s0) {
+                ret.push_back(a);
+                delete_({b});
+            }
+            for(auto [a,b] : s1){
+                ret.push_back(a);
+                delete_({b});
+            }
+
+            return {B, ret};
+        }else{
+            std::vector<elementT> &l = s0;
+            l.insert(l.end(), s1.begin(), s1.end());
+
+            uniqueDistT med = selectKth(l, M);
+            std::vector<int> ret;
+            ret.reserve(M);
+            for(auto [a,b]: l){
+                if(b < med) {
+                    ret.push_back(a);
+                    delete_({b});
+                }
+            }
+            return {med,ret};
+        }
+    }
+    inline void erase(int key) {
+        if(actual_value.find(key) != actual_value.end())
+            delete_({-1, -1, key, -1});
+    }
 
 private:
-    Graph& graph;
-    std::vector<double> db;
-    std::vector<int> pred;
-    int n;
-    int k;
-    int t;
+    void delete_(uniqueDistT x){
+        int a = get<2>(x);
+        uniqueDistT b = actual_value[a];
 
-    bool relax_edge(const int u, const int v, const double weight) {
-        if (db[u] + weight <= db[v] + EPS) {
-            db[v] = db[u] + weight;
-            pred[v] = u;
-            return true;
+        auto it_w = where_is1.find(a);
+        if((it_w != where_is1.end())){
+            auto [it_block,it] = it_w->second;
+
+            (*it_block).erase(it);
+            where_is1.erase(a);
+
+            if((*it_block).size() == 0){
+                auto it_UB_block = UBs.lower_bound({b,it_block});
+
+                if((*it_UB_block).first != B){
+                    UBs.erase(it_UB_block);
+                    D1.erase(it_block);
+                }
+            }
+        }else{
+            auto [it_block,it] = where_is0[a];
+            (*it_block).erase(it);
+            where_is0.erase(a);
+            if((*it_block).size() == 0) D0.erase(it_block);
         }
-        return false;
+
+        actual_value.erase(a);
+        size_--;
     }
 
-    std::pair<std::set<int>, std::set<int>> find_pivots(const double B, const std::set<int>& S) {
-        std::set<int> W = S;
-        std::set<int> W_i_minus_1 = S;
+    uniqueDistT selectKth(std::vector<elementT> &v, int k) {
+        const auto comparator = [](const auto &a, const auto &b){
+            return a.second < b.second;
+        };
+        floyd_rivest_select(v.begin(), v.begin() + k, v.end(), comparator);
+        return v[k].second;
+    }
 
-        for (int i = 0; i < k; i++) {
-            std::set<int> W_i;
-            for (const int u : W_i_minus_1) {
-                for (const Edge& e : graph.adj[u]) {
-                    if (relax_edge(u, e.to, e.weight)) {
-                        if (db[u] + e.weight < B) {
-                            W_i.insert(e.to);
-                            W.insert(e.to);
+
+    void split(std::list<std::list<elementT>>::iterator it_block){ // O(M) + O(lg(Block Numbers))
+        int sz = (*it_block).size();
+
+        std::vector<elementT> v((*it_block).begin() , (*it_block).end());
+        uniqueDistT med = selectKth(v,(sz/2)); // O(M)
+
+        auto pos = it_block;
+        pos++;
+
+        auto new_block = D1.insert(pos,std::list<elementT>());
+        auto it = (*it_block).begin();
+
+        while(it != (*it_block).end()){ // O(M)
+            if((*it).second >= med){
+                (*new_block).push_back(move(*it));
+                auto it_new = (*new_block).end(); it_new--;
+                where_is1[(*it).first] = {new_block, it_new};
+
+                it = (*it_block).erase(it);
+            }else{
+                it++;
+            }
+        }
+
+
+        // Updating UBs
+        // O(lg(Block Numbers))
+        uniqueDistT UB1 = {get<0>(med),get<1>(med),get<2>(med),get<3>(med)-1};
+        auto it_lb = UBs.lower_bound({UB1,it_min});
+        auto [UB2,aux] = (*it_lb);
+
+        UBs.insert({UB1,it_block});
+        UBs.insert({UB2,new_block});
+
+        UBs.erase(it_lb);
+    }
+
+    void batchPrepend(const std::list<elementT> &l) { // O(|l| log(|l|/M) )
+        int sz = l.size();
+
+        if(sz == 0) return;
+        if(sz <= M){
+
+            D0.push_front(std::list<elementT>());
+            auto new_block = D0.begin();
+
+            for(auto &x : l){
+                auto it = actual_value.find(x.first);
+                int exist = (it != actual_value.end());
+
+                if(exist && it->second > x.second){
+                    delete_(x.second);
+                }else if(exist){
+                    continue;
+                }
+
+                (*new_block).push_back(x);
+                auto it_new = (*new_block).end(); it_new--;
+                where_is0[x.first] = {new_block, it_new};
+                actual_value[x.first] = x.second;
+                size_++;
+            }
+            if(new_block->size() == 0) D0.erase(new_block);
+            return;
+        }
+
+        std::vector<elementT> v(l.begin(), l.end());
+        uniqueDistT med = selectKth(v, sz/2);
+
+        std::list<elementT> less,great;
+        for(auto [a,b]: l){
+            if(b < med){
+                less.push_back({a,b});
+            }else if(b > med){
+                great.push_back({a,b});
+            }
+        }
+
+        great.push_back({get<2>(med),med});
+
+        batchPrepend(great);
+        batchPrepend(less);
+    }
+};
+
+template<typename wT>
+class bmssp { // bmssp class
+    int n, k, t, l;
+
+    std::vector<std::vector<std::pair<int, wT>>> ori_adj;
+    std::vector<std::vector<std::pair<int, wT>>> adj;
+    std::vector<wT> d;
+    std::vector<int> pred, path_sz;
+
+    std::vector<int> node_map, node_rev_map;
+
+    bool cd_transfomed;
+
+public:
+    const wT oo = INF;
+    bmssp(int n_): n(n_) {
+        ori_adj.assign(n, {});
+    }
+    bmssp(const auto &adj) {
+        n = adj.size();
+        ori_adj = adj;
+    }
+
+    void addEdge(int a, int b, wT w) {
+        ori_adj[a].emplace_back(b, w);
+    }
+
+    // if the graph already has constant degree, prepage_graph(false)
+    // else, prepage_graph(true)
+    void prepare_graph(bool exec_constant_degree_trasnformation = false) {
+        cd_transfomed = exec_constant_degree_trasnformation;
+        // erase duplicated edges
+        std::vector<std::pair<int, int>> tmp_edges(n, {-1, -1});
+        for(int i = 0; i < n; i++) {
+            std::vector<std::pair<int, wT>> nw_adj;
+            nw_adj.reserve(ori_adj[i].size());
+            for(auto [j, w]: ori_adj[i]) {
+                if(tmp_edges[j].first != i) {
+                    nw_adj.emplace_back(j, w);
+                    tmp_edges[j] = {i, nw_adj.size() - 1};
+                } else {
+                    int id = tmp_edges[j].second;
+                    nw_adj[id].second = std::min(nw_adj[id].second, w);
+                }
+            }
+            ori_adj[i] = move(nw_adj);
+        }
+        tmp_edges.clear();
+
+        if(exec_constant_degree_trasnformation == false) {
+            adj = move(ori_adj);
+            node_map.resize(n);
+            node_rev_map.resize(n);
+
+            for(int i = 0; i < n; i++) {
+                node_map[i] = i;
+                node_rev_map[i] = i;
+            }
+
+            k = floor(pow(log2(n), 1.0 / 3.0));
+            t = floor(pow(log2(n), 2.0 / 3.0));
+        } else { // Make the graph become constant degree
+            int cnt = 0;
+            std::vector<std::map<int, int>> edge_id(n);
+            for(int i = 0; i < n; i++) {
+                for(auto [j, w]: ori_adj[i]) {
+                    if(edge_id[i].find(j) == edge_id[i].end()) {
+                        edge_id[i][j] = cnt++;
+                        edge_id[j][i] = cnt++;
+                    }
+                }
+            }
+
+            cnt++;
+            adj.assign(cnt, {});
+            node_map.resize(cnt);
+            node_rev_map.resize(cnt);
+
+            for(int i = 0; i < n; i++) { // create 0-weight cycles
+                for(auto cur = edge_id[i].begin(); cur != edge_id[i].end(); cur++) {
+                    auto nxt = next(cur);
+                    if(nxt == edge_id[i].end()) nxt = edge_id[i].begin();
+                    adj[cur->second].emplace_back(nxt->second, wT());
+                    node_rev_map[cur->second] = i;
+                }
+            }
+            for(int i = 0; i < n; i++) { // add edges
+                for(auto [j, w]: ori_adj[i]) {
+                    adj[edge_id[i][j]].emplace_back(edge_id[j][i], w);
+                }
+                if(edge_id[i].size()) {
+                    node_map[i] = edge_id[i].begin()->second;
+                } else {
+                    node_map[i] = cnt - 1;
+                }
+            }
+
+            ori_adj.clear();
+        }
+
+
+        d.resize(adj.size());
+        root.resize(adj.size());
+        pred.resize(adj.size());
+        treesz.resize(adj.size());
+        path_sz.resize(adj.size(), 0);
+        last_complete_lvl.resize(adj.size());
+        pivot_vis.resize(adj.size());
+        k = floor(pow(log2(adj.size()), 1.0 / 3.0));
+        t = floor(pow(log2(adj.size()), 2.0 / 3.0));
+        l = ceil(log2(adj.size()) / t);
+        Ds.assign(l, adj.size());
+    }
+
+    std::pair<std::vector<wT>, std::vector<int>> execute(int s) {
+        std::ofstream log_file("bmssp.log");
+        if (!log_file.is_open()) {
+            std::cout << "Failed to open dijkstra.log file!";
+        }
+        fill(d.begin(), d.end(), oo);
+        fill(last_complete_lvl.begin(), last_complete_lvl.end(), -1);
+        fill(pivot_vis.begin(), pivot_vis.end(), -1);
+        for(int i = 0; i < pred.size(); i++) pred[i] = i;
+
+        s = toAnyCustomNode(s);
+        d[s] = 0;
+        path_sz[s] = 0;
+
+        const int l = ceil(log2(adj.size()) / t);
+        const uniqueDistT inf_dist = {oo, 0, 0, 0};
+        bmsspRec(l, inf_dist, {s}, log_file);
+
+        if(!cd_transfomed) {
+            return {d, pred};
+        } else {
+            std::vector<wT> ret_distance(n);
+            std::vector<int> ret_pred(n);
+            for(int i = 0; i < n; i++) {
+                ret_distance[i] = d[toAnyCustomNode(i)];
+                ret_pred[i] = customToReal(getPred(toAnyCustomNode(i)));
+            }
+            return {ret_distance, ret_pred};
+        }
+    }
+
+    std::vector<int> get_shortest_path(int real_u, const std::vector<int> &real_pred) {
+        if(!cd_transfomed) {
+            int u = real_u;
+            if(d[u] == oo) return {};
+
+            int path_sz = get<1>(getDist(u)) + 1;
+            std::vector<int> path(path_sz);
+            for(int i = path_sz - 1; i >= 0; i--) {
+                path[i] = u;
+                u = pred[u];
+            }
+            return path; // {source, ..., real_u}
+        } else {
+            int u = real_u;
+            if(d[toAnyCustomNode(u)] == oo) return {};
+
+            int max_path_sz = get<1>(getDist(toAnyCustomNode(u))) + 1;
+            std::vector<int> path;
+            path.reserve(max_path_sz);
+
+            int oldu;
+            do {
+                path.push_back(u);
+                oldu = u;
+                u = real_pred[u];
+            } while(u != oldu);
+
+            reverse(path.begin(), path.end());
+            return path; // {source, ..., real_u}
+        }
+    }
+private:
+    inline int toAnyCustomNode(int real_id) {
+        return node_map[real_id];
+    }
+
+    inline int customToReal(int id) {
+        return node_rev_map[id];
+    }
+
+    int getPred(int u) {
+        int real_u = customToReal(u);
+
+        int dad = u;
+        do dad = pred[dad];
+        while(customToReal(dad) == real_u && pred[dad] != dad);
+
+        return dad;
+    }
+
+    template<typename T>
+    bool isUnique(const std::vector<T> &v) {
+        auto v2 = v;
+        sort(v2.begin(), v2.end());
+        v2.erase(unique(v2.begin(), v2.end()), v2.end());
+        return v2.size() == v.size();
+    }
+
+    // Unique distances helpers: Assumption 2.1
+    struct uniqueDistT : std::tuple<wT, int, int, int> {
+        static constexpr wT SCALE = 1e10;
+        static constexpr wT SCALE_INV = ((wT) 1.0) / SCALE;
+
+        uniqueDistT() = default;
+        static inline wT sanitize(wT w) {
+            if constexpr (std::is_floating_point_v<wT>) {
+                return std::round(w * SCALE) * SCALE_INV;
+            }
+            return w;
+        }
+        uniqueDistT(wT w, int i1, int i2, int i3)
+            : std::tuple<wT, int, int, int>(sanitize(w), i1, i2, i3) {}
+    };
+    inline uniqueDistT getDist(int u, int v, wT w) {
+        return {d[u] + w, path_sz[u] + 1, v, u};
+    }
+    inline uniqueDistT getDist(int u) {
+        return {d[u], path_sz[u], u, pred[u]};
+    }
+    void updateDist(int u, int v, wT w) {
+        pred[v] = u;
+        d[v] = d[u] + w;
+        path_sz[v] = path_sz[u] + 1;
+    }
+
+    // ===================================================================
+    std::vector<int> root;
+    std::vector<short int> treesz;
+
+    int counter_pivot = 0;
+    std::vector<int> pivot_vis;
+    std::pair<std::vector<int>, std::vector<int>> findPivots(uniqueDistT B, const std::vector<int> &S, std::ofstream& log_file) { // Algorithm 1
+        counter_pivot++;
+
+        std::vector<int> vis;
+        vis.reserve(2 * k * S.size());
+
+        for(int x: S) {
+            vis.push_back(x);
+            pivot_vis[x] = counter_pivot;
+        }
+
+        std::vector<int> active = S;
+        for(int x: S) root[x] = x, treesz[x] = 0;
+        for(int i = 1; i <= k; i++) {
+            std::vector<int> nw_active;
+            nw_active.reserve(active.size() * 4);
+            for(int u: active) {
+                for(auto [v, w]: adj[u]) {
+                    if(getDist(u, v, w) <= getDist(v)) {
+                        updateDist(u, v, w);
+                        if(getDist(v) < B) {
+                            root[v] = root[u];
+                            nw_active.push_back(v);
                         }
                     }
                 }
             }
-            W_i_minus_1 = W_i;
-
-            if (static_cast<int>(W.size()) > k * static_cast<int>(S.size())) {
-                return {S, W};
-            }
-        }
-
-        std::vector<std::pair<int, int>> F_edges;
-        for (int u : W) {
-            for (const Edge& e : graph.adj[u]) {
-                if (W.contains(e.to) && abs(db[e.to] - (db[u] + e.weight)) < EPS) {
-                    F_edges.emplace_back(u, e.to);
+            for(const auto &x: nw_active) {
+                if(pivot_vis[x] != counter_pivot) {
+                    pivot_vis[x] = counter_pivot;
+                    if (log_file.is_open()) log_file << "W, " << x << '\n';
+                    vis.push_back(x);
                 }
             }
+            if(vis.size() > k * S.size()) {
+                return {S, vis};
+            }
+            active = move(nw_active);
         }
 
-        std::unordered_map<int, int> tree_size;
-        std::unordered_set<int> visited;
-
-        std::function<int(int)> dfs_count = [&](const int u) -> int {
-            if (visited.contains(u)) return 0;
-
-            visited.insert(u);
-            int count = 1;
-            for (auto& [fu, fv] : F_edges) {
-                if (fu == u) {
-                    count += dfs_count(fv);
-                }
-            }
-            return count;
-        };
-
-        std::set<int> P;
-        for (int u : S) {
-            if (!visited.contains(u)) {
-                int size = dfs_count(u);
-                tree_size[u] = size;
-                if (size >= k) {
-                    P.insert(u);
-                }
-            }
+        std::vector<int> P;
+        P.reserve(vis.size() / k);
+        for(int u: vis) treesz[root[u]]++;
+        for(int u: S) if(treesz[u] >= k)
+        {
+            if (log_file.is_open()) log_file << "P, " << u << '\n';
+            P.push_back(u);
         }
 
-        return {P, W};
+        // assert(P.size() <= vis.size() / k);
+        return {P, vis};
     }
 
-    std::pair<double, std::set<int>> base_case(double B, const std::set<int>& S) {
-        int x = *S.begin();
-        std::set<int> U0 = {x};
+    std::pair<uniqueDistT, std::vector<int>> baseCase(uniqueDistT B, int x, std::ofstream& log_file) { // Algorithm 2
+        std::vector<int> complete;
+        complete.reserve(k + 1);
 
-        std::priority_queue<std::pair<double, int>, std::vector<std::pair<double, int>>, std::greater<>> heap;
-        heap.emplace(db[x], x);
-        std::set<int> visited;
-
-        while (!heap.empty() && static_cast<int>(U0.size()) < k + 1) {
-            auto [dist, u] = heap.top();
+        std::priority_queue<uniqueDistT, std::vector<uniqueDistT>, std::greater<uniqueDistT>> heap;
+        heap.push(getDist(x));
+        while(heap.empty() == false && complete.size() < k + 1) {
+            auto du = heap.top();
+            int u = get<2>(du);
             heap.pop();
 
-            if (visited.contains(u)) continue;
-            visited.insert(u);
-            if (u != x) U0.insert(u);
+            if(du > getDist(u)) continue;
 
-            for (const Edge& e : graph.adj[u]) {
-                if (relax_edge(u, e.to, e.weight) && db[u] + e.weight < B) {
-                    if (!visited.contains(e.to)) {
-                        heap.emplace(db[e.to], e.to);
+            if (log_file.is_open()) log_file << "U, " << u << '\n';
+            complete.push_back(u);
+            for(auto [v, w]: adj[u]) {
+                auto new_dist = getDist(u, v, w);
+                auto old_dist = getDist(v);
+                if(new_dist <= old_dist && new_dist < B) {
+                    updateDist(u, v, w);
+                    heap.push(new_dist);
+                }
+            }
+        }
+        if(complete.size() <= k) return {B, complete};
+
+        uniqueDistT nB = getDist(complete.back());
+        complete.pop_back();
+
+        return {nB, complete};
+    }
+
+    std::vector<BlockingBasedHeap<uniqueDistT>> Ds;
+    std::vector<short int> last_complete_lvl;
+    std::pair<uniqueDistT, std::vector<int>> bmsspRec(short int l, uniqueDistT B, const std::vector<int> &S, std::ofstream& log_file) { // Algorithm 3
+        if(l == 0) return baseCase(B, S[0], log_file);
+
+        auto [P, bellman_vis] = findPivots(B, S, log_file);
+
+        const long long batch_size = (1ll << ((l - 1) * t));
+        auto &D = Ds[l - 1];
+        D.initialize(batch_size, B);
+        for(int p: P) D.insert(getDist(p));
+
+        uniqueDistT last_complete_B = B;
+        for(int p: P) last_complete_B = std::min(last_complete_B, getDist(p));
+
+        std::vector<int> complete;
+        const long long quota = k * (1ll << (l * t));
+        complete.reserve(quota + bellman_vis.size());
+        while(complete.size() < quota && D.size()) {
+            auto [trying_B, miniS] = D.pull();
+            // all with dist < trying_B, can be reached by miniS <= req 2, alg 3
+            auto [complete_B, nw_complete] = bmsspRec(l - 1, trying_B, miniS, log_file);
+
+            // all new complete_B are greater than the old ones <= point 6, page 10
+            // assert(last_complete_B < complete_B);
+
+            complete.insert(complete.end(), nw_complete.begin(), nw_complete.end());
+            // point 6, page 10 => complete does not intersect with nw_complete
+            // assert(isUnique(complete));
+
+            std::vector<uniqueDistT> can_prepend;
+            can_prepend.reserve(nw_complete.size() * 5 + miniS.size());
+            for(int u: nw_complete) {
+                D.erase(u); // priority queue fix
+                last_complete_lvl[u] = l;
+                for(auto [v, w]: adj[u]) {
+                    auto new_dist = getDist(u, v, w);
+                    if(new_dist <= getDist(v)) {
+                        updateDist(u, v, w);
+                        if(trying_B <= new_dist && new_dist < B) {
+                            D.insert(new_dist); // d[v] can be greater equal than std::min(D), occur 1x per vertex
+                        } else if(complete_B <= new_dist && new_dist < trying_B) {
+                            can_prepend.emplace_back(new_dist); // d[v] is less than all in D, can occur 1x at each level per vertex
+                        }
                     }
                 }
             }
-        }
-
-        if (static_cast<int>(U0.size()) <= k) {
-            return {B, U0};
-        }
-        double B_prime = -INF;
-        for (const int v : U0) {
-            B_prime = std::max(B_prime, db[v]);
-        }
-        std::set<int> U;
-        for (int v : U0) {
-            if (db[v] < B_prime) {
-                U.insert(v);
+            for(int x: miniS) {
+                if(complete_B <= getDist(x)) can_prepend.emplace_back(getDist(x));
+                // second condition is not necessary
             }
+            // can_prepend is not necessarily all unique
+            D.batchPrepend(can_prepend);
+
+            last_complete_B = complete_B;
         }
-        return {B_prime, U};
+        uniqueDistT retB;
+        if(D.size() == 0) retB = B;     // successful
+        else retB = last_complete_B;    // partial
+
+        for(int x: bellman_vis) if(last_complete_lvl[x] != l && getDist(x) < retB) {
+            if (log_file.is_open()) log_file << "U, " << x << '\n';
+            complete.push_back(x); // this get the completed vertices from bellman-ford, it has P in it as well
+        }
+        // get only the ones not in complete already, for it to become disjoint
+        return {retB, complete};
     }
 };
 

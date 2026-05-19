@@ -22,6 +22,21 @@ public:
         adj[u].emplace_back(v, weight);
     }
 
+    [[nodiscard]] std::vector<std::tuple<int, int, double>> edges() const
+    {
+        auto result = std::vector<std::tuple<int, int, double>> { };
+        int i = 0;
+        for (const auto& item : adj)
+        {
+            for (auto edge : item)
+            {
+                result.emplace_back(i, edge.to, edge.weight);
+            }
+            i += 1;
+        }
+        return result;
+    }
+
     [[nodiscard]] int size() const { return n; }
 };
 

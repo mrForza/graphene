@@ -1,3 +1,37 @@
+// #include <iostream>
+// #include <string>
+// #include <locale>
+//
+// // Algorithms
+// // #include "graph_types.h"
+// // #include "dijkstra.h"
+// // #include "bellman_ford.h"
+// // #include "bmssp.h"
+//
+// // Generators
+// #include "graph_generators.h"
+//
+// // Utils
+// #include "graph_utils.h"
+//
+// int main() {
+//     std::setlocale(LC_ALL, "");
+//
+//     // const auto graph = generators::gen_path(5, true);
+//     // const auto graph = generators::gen_circle(5, true);
+//     // const auto graph = generators::gen_tree(20, true, 5);
+//     // const auto graph = generators::gen_triangular_lattice(3, 3, true);
+//     // const auto graph = generators::gen_square_lattice(3, 3, true);
+//     // const auto graph = generators::gen_hexagonal_lattice(10, 10, true);
+//     // const auto graph = generators::gen_k_partite({3, 3, 3}, 0.5, true);
+//     // const auto graph = generators::gen_planar(20, 1, true);
+//     const auto graph = generators::gen_chordal(20, 5, true);
+//     // const auto graph = generators::gen_random_graph(70, 0.05, 1, generators::CycleType::PositiveCycles, generators::ConnectivityType::StronglyConnected, true);
+//     const auto res = graph_utils::save_graph_as_matrix(graph, "./tree.gr");
+//     if (!res) { std::cout << "Error\n"; return 1;}
+//     return 0;
+// }
+
 #include <iostream>
 #include <vector>
 #include <locale>
@@ -46,73 +80,55 @@ void log_results(const std::vector<double>& distances,
 std::vector<Graph> generate_graphs()
 {
     std::vector<Graph> graphs;
-    const std::vector<int> sizes = {10, 100, 1000};
+    const std::vector<int> sizes = {1000};
     for (auto size : sizes)
     {
         graphs.emplace_back(generators::gen_path(size, true));
         std::cout << "gen_path: " << size << '\n';
-        graphs.emplace_back(generators::gen_circle(size, true));
-        std::cout << "gen_circle: " << size << '\n';
-        graphs.emplace_back(generators::gen_tree(size, true, static_cast<int>(size * 0.2)));
-        std::cout << "gen_tree 0.2: " << size << '\n';
-        graphs.emplace_back(generators::gen_tree(size, true, static_cast<int>(size * 0.8)));
-        std::cout << "gen_path 0.8: " << size << '\n';
-        graphs.emplace_back(generators::gen_complete_k_partite(size, static_cast<int>(size * 0.1), true));
-        std::cout << "gen_complete_k_partite 0.1: " << size << '\n';
-        graphs.emplace_back(generators::gen_complete_k_partite(size, static_cast<int>(size * 0.3), true));
-        std::cout << "gen_complete_k_partite 0.3: " << size << '\n';
-        graphs.emplace_back(generators::generate_maximal_planar(size, true));
-        std::cout << "generate_maximal_planar: " << size << '\n';
+        // graphs.emplace_back(generators::gen_complete_k_partite(1000, 10, true));
+        // std::cout << "gen_k_partite: " << size << '\n';
+        // graphs.emplace_back(generators::gen_circle(size, true));
+        // std::cout << "gen_circle: " << size << '\n';
+        // graphs.emplace_back(generators::gen_tree(size, true, static_cast<int>(size * 0.2)));
+        // std::cout << "gen_tree 0.2: " << size << '\n';
+        // graphs.emplace_back(generators::gen_tree(size, true, static_cast<int>(size * 0.8)));
+        // std::cout << "gen_path 0.8: " << size << '\n';
+        // graphs.emplace_back(generators::gen_complete_k_partite(size, static_cast<int>(size * 0.1), true));
+        // std::cout << "gen_complete_k_partite 0.1: " << size << '\n';
+        // graphs.emplace_back(generators::gen_complete_k_partite(size, static_cast<int>(size * 0.3), true));
+        // std::cout << "gen_complete_k_partite 0.3: " << size << '\n';
+        // graphs.emplace_back(generators::generate_maximal_planar(size, true));
+        // std::cout << "generate_maximal_planar: " << size << '\n';
     }
 
     return graphs;
 }
 
 int main() {
-    std::setlocale(LC_ALL, "");
-
-    const auto graphs = generate_graphs();
-    std::vector<BenchmarkResult> results;
-    constexpr int start_node = 0;
-    constexpr int iterations = 10;
-    constexpr int warmup = 3;
-
-    for (auto graph : graphs)
-    {
-        const auto graph_name = graph.name;
-        auto res_dijkstra = run_benchmark(
-            graph,
-            dijkstra,
-            iterations,
-            warmup,
-            graph,
-            start_node
-        );
-        res_dijkstra.algorithm_name = "Dijkstra " + graph_name;
-        results.push_back(res_dijkstra);
-        auto res_bf = run_benchmark(
-            graph,
-            bellman_ford,
-            iterations,
-            warmup,
-            graph,
-            start_node
-        );
-        res_bf.algorithm_name = "Bellman-Ford " + graph_name;
-        results.push_back(res_bf);
-        BMSSPSolver bmssp(graph);
-        auto res_bm = run_benchmark(
-            graph,
-            [&](const int source) {
-                return bmssp.solve_sssp(source);
-            },
-            iterations,
-            warmup,
-            start_node
-        );
-        res_bm.algorithm_name = "BM-SSP " + graph_name;
-        results.push_back(res_bm);
+    const auto graph = generators::gen_random_graph(50, 0.1, 1,
+        generators::CycleType::PositiveCycles, generators::ConnectivityType::StronglyConnected, true);
+    graph_utils::save_graph_as_matrix(graph, "graph.log", "0");
+    auto dijkstra_res = dijkstra(graph, 0);
+    auto edges = graph.edges();
+    bmssp<double> solver(graph.size());
+    for (const auto& [u, v, weight] : edges) {
+        solver.addEdge(u, v, weight);
     }
-    print_benchmark_report(results);
+    solver.prepare_graph(false);
+    auto [distances, _] = solver.execute(0);
+    std::cout << "bmssp:    ";
+    for (const auto distance : distances)
+    {
+        std::cout << distance << ' ';
+    }
+    std::cout << '\n';
+    std::cout << "dijkstra: ";
+    for (const auto distance : dijkstra_res)
+    {
+        std::cout << distance << ' ';
+    }
+
+    std::cout << '\n';
+
     return 0;
 }

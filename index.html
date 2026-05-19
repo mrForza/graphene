@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сравнение Dijkstra и BM-SSP</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 { color: #333; margin-bottom: 20px; }
+
+        .control-panels {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .panel {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            flex: 1;
+            min-width: 300px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel h3 { margin-top: 0; color: #555; font-size: 16px; }
+
+        textarea {
+            width: 100%;
+            height: 80px;
+            font-family: monospace;
+            font-size: 12px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        button:hover { background-color: #45a049; }
+        button.secondary { background-color: #2196F3; }
+        button.secondary:hover { background-color: #0b7dda; }
+
+        /* Область визуализации */
+        .viz-area {
+            display: flex;
+            width: 100%;
+            max-width: 1400px;
+            gap: 20px;
+            height: 70vh;
+        }
+
+        .viz-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            overflow: hidden;
+            border: 1px solid #ddd;
+        }
+
+        .viz-header {
+            padding: 10px;
+            background: #f9f9f9;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .viz-header h2 { margin: 0; font-size: 18px; color: #333; }
+
+        .anim-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .graph-container {
+            flex: 1;
+            position: relative;
+            background: #fff;
+        }
+
+        .node circle { stroke: #fff; stroke-width: 2px; cursor: grab; transition: fill 0.2s; }
+        .node text { pointer-events: none; font-size: 12px; font-weight: bold; fill: #333; text-shadow: 0 0 2px rgba(255,255,255,1); }
+        .link { stroke: #1e3e66; stroke-opacity: 0.6; }
+        .link-label { font-size: 9px; fill: #1e3e66; pointer-events: none; opacity: 0.7; }
+
+        .dj-default { fill: #E7E7E7; }
+        .dj-relax { fill: #C6DCFF; }
+        .dj-complete { fill: #F8D3AF; }
+
+        .bm-default { fill: #E7E7E7; }
+        .bm-u { fill: #F8D3AF; }
+        .bm-p { fill: #FF6C6C; }
+        .bm-w { fill: #C7FFE7; }
+
+    </style>
+</head>
+<body>
+
+<h1>Сравнение алгоритмов: Dijkstra vs BM-SSP</h1>
+
+<div class="control-panels">
+    <div class="panel">
+        <h3>1. Матрица смежности (Граф)</h3>
+        <textarea id="matrixInput" placeholder="0, 10, 0&#10;10, 0, 5&#10;0, 5, 0">0.00, 0, 366.58, 0, 42.16
+0, 0.00, 0, 0, 310.78
+0, 0, 0.00, 0, 0
+0, 0, 0, 0.00, 0
+0, 0, 0, 0, 0.00</textarea>
+        <button onclick="loadGraphToBoth()">Обновить граф везде</button>
+    </div>
+
+    <div class="panel">
+        <h3>2. Лог Dijkstra (RELAX, COMPLETE)</h3>
+        <textarea id="dijkstraLogInput" placeholder="RELAX, 1&#10;COMPLETE, 1"></textarea>
+        <button class="secondary" onclick="loadLog('dijkstra')">Загрузить лог</button>
+    </div>
+
+    <div class="panel">
+        <h3>3. Лог BM-SSP (U, P, W)</h3>
+        <textarea id="bmsspLogInput" placeholder="U, 1&#10;P, 2&#10;W, 3"></textarea>
+        <button class="secondary" onclick="loadLog('bmssp')">Загрузить лог</button>
+    </div>
+</div>
+
+<div class="viz-area">
+
+    <div class="viz-column">
+        <div class="viz-header">
+            <h2>Dijkstra</h2>
+            <div class="anim-controls" id="ctrl-dijkstra">
+                <button onclick="animDijkstra.start()">▶</button>
+                <button onclick="animDijkstra.pause()">⏸</button>
+                <button onclick="animDijkstra.step()">⏯</button>
+                <button onclick="animDijkstra.reset()">↺</button>
+                <span>Шаг: <span id="step-dijkstra">0</span>/<span id="total-dijkstra">0</span></span>
+            </div>
+        </div>
+        <div id="dijkstra-container" class="graph-container"></div>
+    </div>
+
+    <div class="viz-column">
+        <div class="viz-header">
+            <h2>BM-SSP</h2>
+            <div class="anim-controls" id="ctrl-bmssp">
+                <button onclick="animBMSSP.start()">▶</button>
+                <button onclick="animBMSSP.pause()">⏸</button>
+                <button onclick="animBMSSP.step()">⏯</button>
+                <button onclick="animBMSSP.reset()">↺</button>
+                <span>Шаг: <span id="step-bmssp">0</span>/<span id="total-bmssp">0</span></span>
+            </div>
+        </div>
+        <div id="bmssp-container" class="graph-container"></div>
+    </div>
+
+</div>
+
+<script>
+    let rawGraphData = { nodes: [], links: [] };
+
+    class GraphAnimator {
+        constructor(containerId, stepId, totalId, algoType) {
+            this.containerId = containerId;
+            this.stepEl = document.getElementById(stepId);
+            this.totalEl = document.getElementById(totalId);
+            this.algoType = algoType; // 'dijkstra' или 'bmssp'
+
+            this.log = [];
+            this.currentStep = 0;
+            this.timer = null;
+            this.isPlaying = false;
+
+            this.svg = null;
+            this.simulation = null;
+            this.nodesSelection = null;
+        }
+
+        initGraph(data) {
+            const container = document.getElementById(this.containerId);
+            container.innerHTML = '';
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            this.svg = d3.select(`#${this.containerId}`).append("svg")
+                .attr("width", width).attr("height", height)
+                .call(d3.zoom().on("zoom", (event) => this.g.attr("transform", event.transform)))
+                .append("g");
+
+            this.g = this.svg.append("g");
+
+            this.svg.append("defs").selectAll("marker")
+                .data(["end"]).enter().append("marker")
+                .attr("id", `arrow-${this.containerId}`).attr("viewBox", "0 -5 10 10")
+                .attr("refX", 25).attr("refY", 0)
+                .attr("markerWidth", 6).attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", "#1e3e66");
+
+            const nodes = data.nodes.map(n => ({...n}));
+            const links = data.links.map(l => ({...l}));
+
+            this.simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(links).id(d => d.id).distance(100))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collide", d3.forceCollide().radius(20));
+
+            const link = this.g.append("g").selectAll("line")
+                .data(links).enter().append("line")
+                .attr("class", "link")
+                .attr("stroke-width", 1.5)
+                .attr("marker-end", `url(#arrow-${this.containerId})`);
+
+            this.g.append("g").selectAll("text")
+                .data(links).enter().append("text")
+                .attr("class", "link-label")
+                .attr("text-anchor", "middle").attr("dy", -5)
+                .text(d => d.weight.toFixed(0));
+
+            this.nodesSelection = this.g.append("g").selectAll("g")
+                .data(nodes).enter().append("g")
+                .call(d3.drag().on("start", (e,d) => this.dragstarted(e,d))
+                    .on("drag", (e,d) => this.dragged(e,d))
+                    .on("end", (e,d) => this.dragended(e,d)));
+
+            this.nodesSelection.append("circle")
+                .attr("r", 12)
+                .attr("class", this.getDefaultClass());
+
+            this.nodesSelection.append("text")
+                .attr("dx", 0).attr("dy", 4)
+                .attr("text-anchor", "middle")
+                .text(d => d.label);
+
+            this.simulation.on("tick", () => {
+                link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+                this.g.selectAll(".link-label")
+                    .attr("x", d => (d.source.x + d.target.x) / 2)
+                    .attr("y", d => (d.source.y + d.target.y) / 2);
+                this.nodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            });
+        }
+
+        getDefaultClass() {
+            return this.algoType === 'dijkstra' ? 'dj-default' : 'bm-default';
+        }
+
+        setLog(logData) {
+            this.log = logData;
+            this.totalEl.innerText = this.log.length;
+            this.reset();
+        }
+
+        applyStep() {
+            if (this.currentStep >= this.log.length) {
+                this.pause();
+                return;
+            }
+            const action = this.log[this.currentStep];
+            const nodeId = action.node;
+            const type = action.type.toUpperCase();
+
+            const circle = this.nodesSelection.select("circle")
+                .filter(d => d.id === nodeId);
+
+            let newClass = this.getDefaultClass();
+
+            if (this.algoType === 'dijkstra') {
+                if (type === 'RELAX') newClass = 'dj-relax';
+                else if (type === 'COMPLETE') newClass = 'dj-complete';
+            } else { // BM-SSP
+                if (type === 'U') newClass = 'bm-u';
+                else if (type === 'P') newClass = 'bm-p';
+                else if (type === 'W') newClass = 'bm-w';
+            }
+
+            circle.attr("class", newClass);
+
+            this.currentStep++;
+            this.stepEl.innerText = this.currentStep;
+        }
+
+        start() {
+            if (this.isPlaying) return;
+            this.isPlaying = true;
+            this.timer = setInterval(() => this.applyStep(), 200); // 200ms per step
+        }
+
+        pause() {
+            this.isPlaying = false;
+            clearInterval(this.timer);
+        }
+
+        step() {
+            this.pause();
+            this.applyStep();
+        }
+
+        reset() {
+            this.pause();
+            this.currentStep = 0;
+            this.stepEl.innerText = 0;
+            const defaultClass = this.getDefaultClass();
+            this.nodesSelection.select("circle").attr("class", defaultClass);
+        }
+
+        dragstarted(event, d) {
+            if (!event.active) this.simulation.alphaTarget(0.3).restart();
+            d.fx = d.x; d.fy = d.y;
+        }
+        dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+        dragended(event, d) {
+            if (!event.active) this.simulation.alphaTarget(0);
+            d.fx = null; d.fy = null;
+        }
+    }
+
+    const animDijkstra = new GraphAnimator('dijkstra-container', 'step-dijkstra', 'total-dijkstra', 'dijkstra');
+    const animBMSSP = new GraphAnimator('bmssp-container', 'step-bmssp', 'total-bmssp', 'bmssp');
+
+    function parseMatrix(matrixText) {
+        const rows = matrixText.trim().split('\n');
+        const nodes = [];
+        const links = [];
+        rows.forEach((_, i) => nodes.push({ id: i, label: `${i}` }));
+        rows.forEach((row, i) => {
+            const values = row.split(',').map(v => parseFloat(v.trim()));
+            values.forEach((w, j) => {
+                if (w > 0 && i !== j) links.push({ source: i, target: j, weight: w });
+            });
+        });
+        return { nodes, links };
+    }
+
+    function parseLog(text) {
+        const lines = text.trim().split('\n');
+        const events = [];
+        lines.forEach(line => {
+            const parts = line.split(',');
+            if (parts.length >= 2) {
+                const type = parts[0].trim().toUpperCase();
+                const node = parseInt(parts[1].trim());
+                const validTypes = ['RELAX', 'COMPLETE', 'U', 'P', 'W'];
+                if (validTypes.includes(type) && !isNaN(node)) {
+                    events.push({ type, node });
+                }
+            }
+        });
+        return events;
+    }
+
+    function loadGraphToBoth() {
+        const input = document.getElementById('matrixInput').value;
+        try {
+            rawGraphData = parseMatrix(input);
+            animDijkstra.initGraph(rawGraphData);
+            animBMSSP.initGraph(rawGraphData);
+        } catch (e) {
+            alert("Ошибка графа: " + e.message);
+        }
+    }
+
+    function loadLog(algo) {
+        const inputId = algo === 'dijkstra' ? 'dijkstraLogInput' : 'bmsspLogInput';
+        const text = document.getElementById(inputId).value;
+        const events = parseLog(text);
+
+        if (algo === 'dijkstra') {
+            animDijkstra.setLog(events);
+        } else {
+            animBMSSP.setLog(events);
+        }
+    }
+
+    window.onload = loadGraphToBoth;
+
+</script>
+</body>
+</html>

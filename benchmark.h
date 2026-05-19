@@ -25,13 +25,19 @@ struct BenchmarkResult {
     std::string error_msg;
 };
 
+/**
+ * @brief Универсальный бенчмарк.
+ *
+ * Теперь он принимает переменное количество аргументов для алгоритма (Args... args).
+ * Это позволяет передавать лямбды с любым количеством параметров.
+ */
 template <typename AlgoFunc, typename... Args>
 BenchmarkResult run_benchmark(
     const Graph& graph,
     AlgoFunc algorithm,
     int iterations,
     int warmup_runs,
-    Args&&... args
+    Args&&... args // Аргументы, которые будут переданы в алгоритм (например, start_node)
 ) {
     BenchmarkResult result;
     result.vertices = graph.size();
@@ -46,13 +52,19 @@ BenchmarkResult run_benchmark(
 
     std::vector<double> times_ms;
     times_ms.reserve(iterations);
+
     using namespace std::chrono;
+
+    // Лямбда-обертка для выполнения одного прогона
     auto run_once = [&]() -> auto {
         return std::invoke(algorithm, std::forward<Args>(args)...);
     };
+
+    // --- Warmup ---
     for (int i = 0; i < warmup_runs; ++i) {
         try {
             auto res = run_once();
+            // Предотвращение оптимизации
             volatile size_t dummy = 0;
             if constexpr (requires { res.empty(); }) {
                 if (!res.empty()) dummy = 1;
@@ -62,10 +74,14 @@ BenchmarkResult run_benchmark(
             (void)dummy;
         } catch (...) {}
     }
+
+    // --- Measurement ---
     for (int i = 0; i < iterations; ++i) {
         auto t_start = high_resolution_clock::now();
         try {
             auto res = run_once();
+
+            // Предотвращение оптимизации (универсальное)
             volatile size_t dummy = 0;
             if constexpr (requires { res.empty(); }) {
                 if (!res.empty()) dummy = 1;
@@ -138,7 +154,7 @@ inline void print_benchmark_report(const std::vector<BenchmarkResult>& results) 
             continue;
         }
         std::ostringstream oss;
-        oss.imbue(std::locale::classic());
+        oss.imbue(std::locale::classic()); // Гарантируем точку при форматировании
         oss << std::fixed << std::setprecision(4) << res.avg_time_ms;
         std::string time_str = oss.str();
         std::replace(time_str.begin(), time_str.end(), '.', ',');

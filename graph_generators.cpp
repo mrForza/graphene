@@ -6,8 +6,6 @@
 #include <algorithm>
 
 namespace generators {
-    constexpr unsigned int FIXED_SEED = 42;
-
     constexpr double FIXED_WEIGHT_MIN = 0.0;
 
     constexpr double FIXED_WEIGHT_MAX = 1000.0;
@@ -15,7 +13,9 @@ namespace generators {
     Graph gen_path(const int n, const bool is_directed) {
         if (n <= 0) return Graph(0);
         Graph graph(n);
-        std::mt19937 gen(42); 
+
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_real_distribution<double> dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
 
         for (int i = 0; i < n - 1; ++i) {
@@ -30,7 +30,8 @@ namespace generators {
     Graph gen_circle(const int n, const bool is_directed) {
         if (n <= 0) return Graph(0);
         Graph graph(n);
-        std::mt19937 gen(42); 
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_real_distribution<double> dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
 
         for (int i = 0; i < n; ++i) {
@@ -49,7 +50,8 @@ namespace generators {
         if (n == 1) return Graph(1);
 
         Graph graph(n);
-        std::mt19937 gen(42);
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_real_distribution<double> weight_dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
         std::vector<int> current_children_count(n, 0);
         std::vector<int> available_parents;
@@ -89,7 +91,8 @@ namespace generators {
 
         const int n = rows * cols;
         Graph graph(n);
-        std::mt19937 gen(42);
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_real_distribution<double> weight_dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
 
         std::vector<std::pair<int, int>> directions = {
@@ -135,7 +138,8 @@ namespace generators {
 
         const int n = rows * cols;
         Graph graph(n);
-        std::mt19937 gen(42);
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_real_distribution<double> weight_dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
 
         auto add_edge_weighted = [&](const int u, const int v) {
@@ -168,7 +172,8 @@ namespace generators {
         const int w = cols + 1;
         const int n = h * w;
         Graph graph(n);
-        std::mt19937 gen(40);
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_real_distribution<double> weight_dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
 
         auto add_edge_weighted = [&](int u, int v) {
@@ -218,7 +223,8 @@ namespace generators {
             return vertex_map[coord];
         };
 
-        std::mt19937 gen(42);
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_real_distribution<double> weight_dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
         struct EdgeTemp { int u, v; double w; };
         std::vector<EdgeTemp> edges;
@@ -304,7 +310,8 @@ namespace generators {
         if (n == 0) return Graph(0);
 
         Graph graph(n);
-        std::mt19937 gen(FIXED_SEED);
+        std::random_device rd;
+        std::mt19937 gen(rd());;
         std::uniform_real_distribution<double> weight_dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
         std::uniform_real_distribution<double> prob_dist(0.0, 1.0);
 
@@ -358,7 +365,8 @@ namespace generators {
         }
 
         Graph graph(n);
-        std::mt19937 gen(FIXED_SEED);
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_real_distribution<double> weight_dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
         std::uniform_int_distribution<int> face_dist(0, 0);
         std::vector<Face> faces;
@@ -472,7 +480,8 @@ namespace generators {
             }
         }
 
-        std::shuffle(extra_edges.begin(), extra_edges.end(), std::mt19937(FIXED_SEED + 1));
+        std::random_device rd;
+        std::shuffle(extra_edges.begin(), extra_edges.end(), std::mt19937(rd() + 1)); // Другой сид для шаффла
 
 
         std::vector<EdgePair> final_edges = tree_edges;
@@ -498,7 +507,8 @@ namespace generators {
         if (max_clique_size > n) max_clique_size = n;
 
         Graph graph(n);
-        std::mt19937 gen(FIXED_SEED);
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_real_distribution<double> weight_dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
         std::vector<int> current_clique;
 
@@ -515,7 +525,7 @@ namespace generators {
         for (int i = 1; i < n; ++i) {
             int max_neighbors = std::min(static_cast<int>(current_clique.size()), max_clique_size - 1);
             int min_neighbors = 1;
-            if (max_neighbors < min_neighbors) min_neighbors = 0;
+            if (max_neighbors < min_neighbors) min_neighbors = 0; // Если клика пустая (невозможно)
 
             std::uniform_int_distribution<int> count_dist(min_neighbors, max_neighbors);
             int k = count_dist(gen);
@@ -561,7 +571,8 @@ namespace generators {
         if (density < 0.0) density = 0.0;
         if (density > 1.0) density = 1.0;
 
-        std::mt19937 gen(FIXED_SEED);
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_real_distribution<double> weight_dist(FIXED_WEIGHT_MIN, FIXED_WEIGHT_MAX);
         std::uniform_real_distribution<double> pos_weight_dist(0.0, 1000.0);
         std::vector<int> vertices(n);
@@ -593,7 +604,9 @@ namespace generators {
                 (static_cast<long long>(k) * (k - 1)) :
                 (static_cast<long long>(k) * (k - 1) / 2);
 
-            // RAM protection
+            // Защита от выделения гигабайтов памяти, если компонента огромная, а плотность маленькая
+            // Если пул слишком большой (> 50 млн ребер), лучше использовать старый метод с ограничением попыток
+            // Но для N=3000 и одной компоненты пул ~4.5 млн, что легко влезает в RAM.
             if (pool_size > 50000000) { }
 
             all_possible_edges.reserve(static_cast<size_t>(pool_size));

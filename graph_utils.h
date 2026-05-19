@@ -25,6 +25,6 @@ namespace graph_utils {
         const Graph& graph,
         const std::string& filename,
         const std::string& infinity_symbol = "0");
-}
+} // namespace graph_utils
 
 #endif //SMALLCPPPROGRAM_GRAPH_UTILS_H
