@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Сравнение Dijkstra и BM-SSP</title>
+    <title>Сравнение Dijkstra и BM-SSP + Анализ очереди</title>
+    <!-- D3.js для графов -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- Chart.js для графиков -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -18,6 +21,7 @@
 
         h1 { color: #333; margin-bottom: 20px; }
 
+        /* Панели ввода */
         .control-panels {
             display: flex;
             gap: 20px;
@@ -73,7 +77,7 @@
             width: 100%;
             max-width: 1400px;
             gap: 20px;
-            height: 70vh;
+            height: 80vh;
         }
 
         .viz-column {
@@ -94,6 +98,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0;
         }
 
         .viz-header h2 { margin: 0; font-size: 18px; color: #333; }
@@ -106,24 +111,51 @@
         }
 
         .graph-container {
-            flex: 1;
+            flex: 2;
             position: relative;
             background: #fff;
+            min-height: 300px;
         }
 
+        .chart-container {
+            flex: 1;
+            padding: 10px;
+            border-top: 1px solid #eee;
+            background: #fafafa;
+            height: 250px;
+            position: relative;
+        }
+
+        /* Стили D3 */
         .node circle { stroke: #fff; stroke-width: 2px; cursor: grab; transition: fill 0.2s; }
         .node text { pointer-events: none; font-size: 12px; font-weight: bold; fill: #333; text-shadow: 0 0 2px rgba(255,255,255,1); }
         .link { stroke: #1e3e66; stroke-opacity: 0.6; }
         .link-label { font-size: 9px; fill: #1e3e66; pointer-events: none; opacity: 0.7; }
 
-        .dj-default { fill: #E7E7E7; }
-        .dj-relax { fill: #C6DCFF; }
-        .dj-complete { fill: #F8D3AF; }
+        /* --- ЦВЕТА DIJKSTRA --- */
+        .dj-default { fill: #E7E7E7; }       /* Серый */
+        .dj-relax { fill: #1240AB; }         /* Яркий синий */
+        .dj-complete { fill: #E9003A; }      /* Яркий красный */
 
-        .bm-default { fill: #E7E7E7; }
-        .bm-u { fill: #F8D3AF; }
-        .bm-p { fill: #FF6C6C; }
-        .bm-w { fill: #C7FFE7; }
+        /* Текст на ярких цветах должен быть белым для читаемости */
+        circle.dj-relax + text,
+        circle.dj-complete + text {
+            fill: #fff !important;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        /* --- ЦВЕТА BM-SSP (Обновленные) --- */
+        .bm-default { fill: #E7E7E7; }       /* Серый */
+        .bm-u { fill: #E9003A; }             /* Яркий красный */
+        .bm-p { fill: #FF6C6C; }             /* Светло-красный (оставлен без изменений) */
+        .bm-w { fill: #1240AB; }             /* Яркий синий */
+
+        /* Текст на ярких цветах BM-SSP */
+        circle.bm-u + text,
+        circle.bm-w + text {
+            fill: #fff !important;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
 
     </style>
 </head>
@@ -131,7 +163,9 @@
 
 <h1>Сравнение алгоритмов: Dijkstra vs BM-SSP</h1>
 
+<!-- Ввод данных -->
 <div class="control-panels">
+    <!-- 1. Граф -->
     <div class="panel">
         <h3>1. Матрица смежности (Граф)</h3>
         <textarea id="matrixInput" placeholder="0, 10, 0&#10;10, 0, 5&#10;0, 5, 0">0.00, 0, 366.58, 0, 42.16
@@ -142,12 +176,14 @@
         <button onclick="loadGraphToBoth()">Обновить граф везде</button>
     </div>
 
+    <!-- 2. Лог Dijkstra -->
     <div class="panel">
         <h3>2. Лог Dijkstra (RELAX, COMPLETE)</h3>
         <textarea id="dijkstraLogInput" placeholder="RELAX, 1&#10;COMPLETE, 1"></textarea>
         <button class="secondary" onclick="loadLog('dijkstra')">Загрузить лог</button>
     </div>
 
+    <!-- 3. Лог BM-SSP -->
     <div class="panel">
         <h3>3. Лог BM-SSP (U, P, W)</h3>
         <textarea id="bmsspLogInput" placeholder="U, 1&#10;P, 2&#10;W, 3"></textarea>
@@ -155,8 +191,10 @@
     </div>
 </div>
 
+<!-- Область визуализации -->
 <div class="viz-area">
 
+    <!-- Левая колонка: Dijkstra + График -->
     <div class="viz-column">
         <div class="viz-header">
             <h2>Dijkstra</h2>
@@ -169,8 +207,12 @@
             </div>
         </div>
         <div id="dijkstra-container" class="graph-container"></div>
+        <div class="chart-container">
+            <canvas id="queueChart"></canvas>
+        </div>
     </div>
 
+    <!-- Правая колонка: BM-SSP -->
     <div class="viz-column">
         <div class="viz-header">
             <h2>BM-SSP</h2>
@@ -183,21 +225,25 @@
             </div>
         </div>
         <div id="bmssp-container" class="graph-container"></div>
+        <div style="flex:1; background:#fafafa; border-top:1px solid #eee;"></div>
     </div>
 
 </div>
 
 <script>
+    // --- Глобальные данные ---
     let rawGraphData = { nodes: [], links: [] };
+    let queueChartInstance = null;
 
     class GraphAnimator {
         constructor(containerId, stepId, totalId, algoType) {
             this.containerId = containerId;
             this.stepEl = document.getElementById(stepId);
             this.totalEl = document.getElementById(totalId);
-            this.algoType = algoType; // 'dijkstra' или 'bmssp'
+            this.algoType = algoType;
 
             this.log = [];
+            this.queueData = [];
             this.currentStep = 0;
             this.timer = null;
             this.isPlaying = false;
@@ -278,9 +324,33 @@
             return this.algoType === 'dijkstra' ? 'dj-default' : 'bm-default';
         }
 
+        calculateQueueData() {
+            if (this.algoType !== 'dijkstra') return;
+
+            let queueSize = 0;
+            this.queueData = [0];
+
+            for (let i = 0; i < this.log.length; i++) {
+                const action = this.log[i];
+                if (action.type === 'RELAX') {
+                    queueSize++;
+                } else if (action.type === 'COMPLETE') {
+                    queueSize--;
+                    if (queueSize < 0) queueSize = 0;
+                }
+                this.queueData.push(queueSize);
+            }
+        }
+
         setLog(logData) {
             this.log = logData;
             this.totalEl.innerText = this.log.length;
+
+            if (this.algoType === 'dijkstra') {
+                this.calculateQueueData();
+                updateQueueChart(this.queueData);
+            }
+
             this.reset();
         }
 
@@ -311,12 +381,16 @@
 
             this.currentStep++;
             this.stepEl.innerText = this.currentStep;
+
+            if (this.algoType === 'dijkstra' && queueChartInstance) {
+                updateChartProgress(this.currentStep);
+            }
         }
 
         start() {
             if (this.isPlaying) return;
             this.isPlaying = true;
-            this.timer = setInterval(() => this.applyStep(), 200); // 200ms per step
+            this.timer = setInterval(() => this.applyStep(), 100);
         }
 
         pause() {
@@ -335,6 +409,10 @@
             this.stepEl.innerText = 0;
             const defaultClass = this.getDefaultClass();
             this.nodesSelection.select("circle").attr("class", defaultClass);
+
+            if (this.algoType === 'dijkstra' && queueChartInstance) {
+                updateChartProgress(0);
+            }
         }
 
         dragstarted(event, d) {
@@ -351,6 +429,83 @@
     const animDijkstra = new GraphAnimator('dijkstra-container', 'step-dijkstra', 'total-dijkstra', 'dijkstra');
     const animBMSSP = new GraphAnimator('bmssp-container', 'step-bmssp', 'total-bmssp', 'bmssp');
 
+    // --- Chart.js Logic ---
+    function initQueueChart() {
+        const ctx = document.getElementById('queueChart').getContext('2d');
+        queueChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Размер приоритетной очереди',
+                    data: [],
+                    borderColor: '#2196F3',
+                    backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    fill: true,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { display: true },
+                    tooltip: { mode: 'index', intersect: false }
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Шаг алгоритма' },
+                        grid: { display: false }
+                    },
+                    y: {
+                        title: { display: true, text: 'Элементов в очереди' },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    function updateQueueData(queueData) {
+        if (!queueChartInstance) return;
+
+        const labels = queueData.map((_, i) => i);
+        queueChartInstance.data.labels = labels;
+        queueChartInstance.data.datasets[0].data = queueData;
+        queueChartInstance.update();
+    }
+
+    function updateQueueChart(queueData) {
+        updateQueueData(queueData);
+        updateChartProgress(0);
+    }
+
+    function updateChartProgress(stepIndex) {
+        if (!queueChartInstance) return;
+
+        const dataLen = queueChartInstance.data.datasets[0].data.length;
+        if (stepIndex >= dataLen) return;
+
+        const currentVal = queueChartInstance.data.datasets[0].data[stepIndex];
+
+        queueChartInstance.data.datasets[1] = {
+            label: 'Текущий шаг',
+            data: Array(stepIndex).fill(null).concat([currentVal]).concat(Array(dataLen - stepIndex - 1).fill(null)),
+            pointRadius: 6,
+            pointBackgroundColor: '#FF5722',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            showLine: false
+        };
+        queueChartInstance.update('none');
+    }
+
+
+    // --- Парсинг ---
     function parseMatrix(matrixText) {
         const rows = matrixText.trim().split('\n');
         const nodes = [];
@@ -405,7 +560,10 @@
         }
     }
 
-    window.onload = loadGraphToBoth;
+    window.onload = () => {
+        initQueueChart();
+        loadGraphToBoth();
+    };
 
 </script>
 </body>

@@ -1,37 +1,3 @@
-// #include <iostream>
-// #include <string>
-// #include <locale>
-//
-// // Algorithms
-// // #include "graph_types.h"
-// // #include "dijkstra.h"
-// // #include "bellman_ford.h"
-// // #include "bmssp.h"
-//
-// // Generators
-// #include "graph_generators.h"
-//
-// // Utils
-// #include "graph_utils.h"
-//
-// int main() {
-//     std::setlocale(LC_ALL, "");
-//
-//     // const auto graph = generators::gen_path(5, true);
-//     // const auto graph = generators::gen_circle(5, true);
-//     // const auto graph = generators::gen_tree(20, true, 5);
-//     // const auto graph = generators::gen_triangular_lattice(3, 3, true);
-//     // const auto graph = generators::gen_square_lattice(3, 3, true);
-//     // const auto graph = generators::gen_hexagonal_lattice(10, 10, true);
-//     // const auto graph = generators::gen_k_partite({3, 3, 3}, 0.5, true);
-//     // const auto graph = generators::gen_planar(20, 1, true);
-//     const auto graph = generators::gen_chordal(20, 5, true);
-//     // const auto graph = generators::gen_random_graph(70, 0.05, 1, generators::CycleType::PositiveCycles, generators::ConnectivityType::StronglyConnected, true);
-//     const auto res = graph_utils::save_graph_as_matrix(graph, "./tree.gr");
-//     if (!res) { std::cout << "Error\n"; return 1;}
-//     return 0;
-// }
-
 #include <iostream>
 #include <vector>
 #include <locale>
@@ -105,30 +71,42 @@ std::vector<Graph> generate_graphs()
 }
 
 int main() {
-    const auto graph = generators::gen_random_graph(50, 0.1, 1,
+    // const auto graph = generators::gen_random_graph(50, 0.1, 1,
+    //     generators::CycleType::PositiveCycles, generators::ConnectivityType::StronglyConnected, true);
+    // graph_utils::save_graph_as_matrix(graph, "graph.log", "0");
+    // auto dijkstra_res = dijkstra(graph, 0);
+    // auto edges = graph.edges();
+    // bmssp<double> solver(graph.size());
+    // for (const auto& [u, v, weight] : edges) {
+    //     solver.addEdge(u, v, weight);
+    // }
+    // solver.prepare_graph(true);
+    // auto [distances, _] = solver.execute(0);
+    // std::cout << "bmssp:    ";
+    // for (const auto distance : distances)
+    // {
+    //     std::cout << distance << ' ';
+    // }
+    // std::cout << '\n';
+    // std::cout << "dijkstra: ";
+    // for (const auto distance : dijkstra_res)
+    // {
+    //     std::cout << distance << ' ';
+    // }
+    //
+    // std::cout << '\n';
+
+    const auto graph = generators::gen_random_graph(200, 0.02, 1,
         generators::CycleType::PositiveCycles, generators::ConnectivityType::StronglyConnected, true);
     graph_utils::save_graph_as_matrix(graph, "graph.log", "0");
     auto dijkstra_res = dijkstra(graph, 0);
+
     auto edges = graph.edges();
     bmssp<double> solver(graph.size());
     for (const auto& [u, v, weight] : edges) {
         solver.addEdge(u, v, weight);
     }
-    solver.prepare_graph(false);
+    solver.prepare_graph(true);
     auto [distances, _] = solver.execute(0);
-    std::cout << "bmssp:    ";
-    for (const auto distance : distances)
-    {
-        std::cout << distance << ' ';
-    }
-    std::cout << '\n';
-    std::cout << "dijkstra: ";
-    for (const auto distance : dijkstra_res)
-    {
-        std::cout << distance << ' ';
-    }
-
-    std::cout << '\n';
-
     return 0;
 }

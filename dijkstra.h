@@ -34,11 +34,11 @@ inline std::vector<double> dijkstra(const Graph& graph, const int start, const s
         const int u = pq.top().second;
         pq.pop();
 
-        if (d > dist[u]) continue;
-
         if (log_file.is_open()) {
             log_file << "COMPLETE, " << u << "\n";
         }
+
+        if (d > dist[u]) continue;
 
         for (const auto& edge : graph.adj[u]) {
             const int v = edge.to;
