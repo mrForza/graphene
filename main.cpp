@@ -1,8 +1,9 @@
 #include <iostream>
 #include <vector>
-#include <locale>
-#include <fstream>
+#include <string>
 #include <sstream>
+#include <iomanip>
+#include <algorithm>
 
 #include "graph_types.h"
 #include "dijkstra.h"
@@ -11,102 +12,131 @@
 #include "graph_generators.h"
 #include "benchmark.h"
 #include "graph_utils.h"
+#include "config.h"
 
-void log_results(const std::vector<double>& distances,
-                 const std::string& algorithm_name,
-                 const std::string& filename = "res.log",
-                 const bool append = true)
-{
-    std::ofstream file;
-    if (append) {
-        file.open(filename, std::ios::app);
-    } else {
-        file.open(filename, std::ios::out | std::ios::trunc);
+static std::string escape_csv(const std::string& s) {
+    if (s.find(',') != std::string::npos || s.find('"') != std::string::npos || s.find('\n') != std::string::npos) {
+        std::string escaped = s;
+        size_t pos = 0;
+        while ((pos = escaped.find('"', pos)) != std::string::npos) {
+            escaped.insert(pos, "\"");
+            pos += 2;
+        }
+        return "\"" + escaped + "\"";
     }
-    if (!file.is_open()) {
-        std::cerr << "[Error] Cannot open file " << filename << " for writing.\n";
-        return;
+    return s;
+}
+
+int main(int argc, char* argv[]) {
+    std::string config_file = "config.yaml";
+    if (argc > 1) {
+        config_file = argv[1];
     }
 
-    file << "---" << algorithm_name << "---\n";
-    file << std::fixed << std::setprecision(4);
-    constexpr double INF = std::numeric_limits<double>::infinity();
-    for (int i = 0; i < distances.size(); ++i)
-    {
-        if (std::isinf(distances[i])) {
-            file << i << ": INF\n";
-        } else {
-            file << i << ": " << distances[i] << "\n";
+    Config config;
+    try {
+        config = parse_config(config_file);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to parse config: " << e.what() << "\n";
+        return 1;
+    }
+
+    std::cout << "Experiment\tGenerator\tGraph\tVertices\tEdges\tAlgorithm\tAvgTime_ms\tMinTime_ms\tMaxTime_ms\tStdDev_ms\tIterations\n";
+
+    for (size_t exp_idx = 0; exp_idx < config.experiments.size(); ++exp_idx) {
+        const auto& exp = config.experiments[exp_idx];
+
+        std::vector<Graph> graphs;
+        try {
+            graphs = generate_graphs_for_experiment(exp);
+        } catch (const std::exception& e) {
+            std::cerr << "Error: " << e.what() << "\n";
+            continue;
+        }
+
+        for (size_t g_idx = 0; g_idx < graphs.size(); ++g_idx) {
+            const auto& graph = graphs[g_idx];
+            long long edge_count = 0;
+            for (int i = 0; i < graph.size(); ++i) {
+                edge_count += static_cast<long long>(graph.adj[i].size());
+            }
+
+            std::string graph_label = graph.name.empty() ? exp.generator_type : graph.name;
+
+            for (const auto& algo : exp.algorithms) {
+                BenchmarkResult result;
+                result.vertices = graph.size();
+                result.iterations = 0;
+                result.success = true;
+
+                try {
+                    if (algo.name == "dijkstra") {
+                        result = run_benchmark(
+                            graph,
+                            [&graph](int s) { return dijkstra(graph, s); },
+                            exp.benchmark.iterations,
+                            exp.benchmark.warmup,
+                            algo.start_node
+                        );
+                        result.algorithm_name = "dijkstra";
+                    } else if (algo.name == "bellman_ford") {
+                        result = run_benchmark(
+                            graph,
+                            [&graph](int s) { return bellman_ford(graph, s); },
+                            exp.benchmark.iterations,
+                            exp.benchmark.warmup,
+                            algo.start_node
+                        );
+                        result.algorithm_name = "bellman_ford";
+                    } else if (algo.name == "bmssp") {
+                        auto edges = graph.edges();
+                        auto solver = std::make_unique<bmssp<double>>(graph.size());
+                        for (const auto& [u, v, w] : edges) {
+                            solver->addEdge(u, v, w);
+                        }
+                        solver->prepare_graph(true);
+
+                        result = run_benchmark(
+                            graph,
+                            [solver = std::move(solver)](int s) mutable {
+                                auto [dist, _] = solver->execute(s);
+                                return dist;
+                            },
+                            exp.benchmark.iterations,
+                            exp.benchmark.warmup,
+                            algo.start_node
+                        );
+                        result.algorithm_name = "bmssp";
+                    } else {
+                        result.success = false;
+                        result.error_msg = "Unknown algorithm: " + algo.name;
+                    }
+                } catch (const std::exception& e) {
+                    result.success = false;
+                    result.error_msg = e.what();
+                }
+
+                std::cout << escape_csv(exp.name) << "\t"
+                          << exp.generator_type << "\t"
+                          << escape_csv(graph_label) << "\t"
+                          << graph.size() << "\t"
+                          << edge_count << "\t"
+                          << algo.name << "\t";
+
+                if (result.success) {
+                    std::cout << std::fixed << std::setprecision(4)
+                              << result.avg_time_ms << "\t"
+                              << result.min_time_ms << "\t"
+                              << result.max_time_ms << "\t"
+                              << result.std_dev_ms << "\t"
+                              << result.iterations;
+                } else {
+                    std::cout << "ERROR\t\t\t\t0";
+                }
+                std::cout << "\n";
+            }
         }
     }
-    file << "\n";
-    file.close();
-}
 
-std::vector<Graph> generate_graphs()
-{
-    std::vector<Graph> graphs;
-    const std::vector<int> sizes = {1000};
-    for (auto size : sizes)
-    {
-        graphs.emplace_back(generators::gen_path(size, true));
-        std::cout << "gen_path: " << size << '\n';
-        // graphs.emplace_back(generators::gen_complete_k_partite(1000, 10, true));
-        // std::cout << "gen_k_partite: " << size << '\n';
-        // graphs.emplace_back(generators::gen_circle(size, true));
-        // std::cout << "gen_circle: " << size << '\n';
-        // graphs.emplace_back(generators::gen_tree(size, true, static_cast<int>(size * 0.2)));
-        // std::cout << "gen_tree 0.2: " << size << '\n';
-        // graphs.emplace_back(generators::gen_tree(size, true, static_cast<int>(size * 0.8)));
-        // std::cout << "gen_path 0.8: " << size << '\n';
-        // graphs.emplace_back(generators::gen_complete_k_partite(size, static_cast<int>(size * 0.1), true));
-        // std::cout << "gen_complete_k_partite 0.1: " << size << '\n';
-        // graphs.emplace_back(generators::gen_complete_k_partite(size, static_cast<int>(size * 0.3), true));
-        // std::cout << "gen_complete_k_partite 0.3: " << size << '\n';
-        // graphs.emplace_back(generators::generate_maximal_planar(size, true));
-        // std::cout << "generate_maximal_planar: " << size << '\n';
-    }
-
-    return graphs;
-}
-
-int main() {
-    // const auto graph = generators::gen_random_graph(50, 0.1, 1,
-    //     generators::CycleType::PositiveCycles, generators::ConnectivityType::StronglyConnected, true);
-    // graph_utils::save_graph_as_matrix(graph, "graph.log", "0");
-    // auto dijkstra_res = dijkstra(graph, 0);
-    // auto edges = graph.edges();
-    // bmssp<double> solver(graph.size());
-    // for (const auto& [u, v, weight] : edges) {
-    //     solver.addEdge(u, v, weight);
-    // }
-    // solver.prepare_graph(true);
-    // auto [distances, _] = solver.execute(0);
-    // std::cout << "bmssp:    ";
-    // for (const auto distance : distances)
-    // {
-    //     std::cout << distance << ' ';
-    // }
-    // std::cout << '\n';
-    // std::cout << "dijkstra: ";
-    // for (const auto distance : dijkstra_res)
-    // {
-    //     std::cout << distance << ' ';
-    // }
-    //
-    // std::cout << '\n';
-
-    const auto graph = generators::gen_random_graph(200, 0.02, 1,
-        generators::CycleType::PositiveCycles, generators::ConnectivityType::StronglyConnected, true);
-    graph_utils::save_graph_as_matrix(graph, "graph.log", "0");
-    auto dijkstra_res = dijkstra(graph, 0);
-
-    auto edges = graph.edges();
-    bmssp<double> solver(graph.size());
-    for (const auto& [u, v, weight] : edges) {
-        solver.addEdge(u, v, weight);
-    }
-    solver.prepare_graph(true);
-    auto [distances, _] = solver.execute(0);
     return 0;
 }

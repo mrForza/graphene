@@ -1,0 +1,17 @@
+experiments:
+  - name: "Random Cycled Low Density"
+    generator:
+      type: random
+      params:
+        density: 0.1
+        num_components: 1
+        cycle_type: PositiveCycles
+        connectivity_type: StronglyConnected
+        directed: true
+      sweep:
+        n: [10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }

@@ -1,0 +1,144 @@
+experiments:
+  - name: "Path"
+    generator:
+      type: path
+      params: { directed: true }
+      sweep:
+        n: [10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }
+
+  - name: "Circle"
+    generator:
+      type: circle
+      params: { directed: true }
+      sweep:
+        n: [10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }
+
+  - name: "Tree"
+    generator:
+      type: tree
+      params: { directed: true, branching_range: 4 }
+      sweep:
+        n: [10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }
+
+  - name: "Triangular Lattice"
+    generator:
+      type: triangular_lattice
+      params: { directed: true }
+      sweep:
+        mode: zip
+        rows: [10, 25, 50, 75, 100]
+        cols: [10, 25, 50, 75, 100]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }
+
+  - name: "Square Lattice"
+    generator:
+      type: square_lattice
+      params: { directed: true }
+      sweep:
+        mode: zip
+        rows: [10, 25, 50, 75, 100]
+        cols: [10, 25, 50, 75, 100]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }
+
+  - name: "Complete K-Partite"
+    generator:
+      type: complete_k_partite
+      params: { k: 10, directed: true }
+      sweep:
+        n: [10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }
+
+  - name: "Random Acyclic High Density"
+    generator:
+      type: random
+      params:
+        density: 0.7
+        num_components: 1
+        cycle_type: Acyclic
+        connectivity_type: WeaklyConnected
+        directed: true
+      sweep:
+        n: [10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }
+
+  - name: "Random Acyclic Low Density"
+    generator:
+      type: random
+      params:
+        density: 0.1
+        num_components: 1
+        cycle_type: Acyclic
+        connectivity_type: WeaklyConnected
+        directed: true
+      sweep:
+        n: [10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }
+
+  - name: "Random Cycled High Density"
+    generator:
+      type: random
+      params:
+        density: 0.7
+        num_components: 1
+        cycle_type: PositiveCycles
+        connectivity_type: StronglyConnected
+        directed: true
+      sweep:
+        n: [10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }
+
+  - name: "Random Cycled Low Density"
+    generator:
+      type: random
+      params:
+        density: 0.1
+        num_components: 1
+        cycle_type: PositiveCycles
+        connectivity_type: StronglyConnected
+        directed: true
+      sweep:
+        n: [10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
+    algorithms:
+      - { name: dijkstra, start_node: 0 }
+      - { name: bellman_ford, start_node: 0 }
+      - { name: bmssp, start_node: 0 }
+    benchmark: { iterations: 1, warmup: 1 }
