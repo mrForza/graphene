@@ -3,7 +3,7 @@
 
 #include <string>
 #include <vector>
-#include <yaml-cpp/yaml.h>
+#include "simple_yaml.h"
 #include "graph_types.h"
 
 struct AlgorithmConfig {
@@ -19,8 +19,8 @@ struct BenchmarkConfig {
 struct ExperimentConfig {
     std::string name;
     std::string generator_type;
-    YAML::Node params;
-    YAML::Node sweep;
+    simple_yaml::Node params;
+    simple_yaml::Node sweep;
     std::vector<AlgorithmConfig> algorithms;
     BenchmarkConfig benchmark;
 };

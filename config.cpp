@@ -3,33 +3,34 @@
 #include <stdexcept>
 #include <iostream>
 
-static YAML::Node merge_nodes(YAML::Node base, const YAML::Node& overlay) {
+using namespace simple_yaml;
+
+static Node merge_nodes(Node base, const Node& overlay) {
     if (!overlay) return base;
-    if (!base) base = YAML::Node(YAML::NodeType::Map);
+    if (!base) base = Node::create_map();
     if (!base.IsMap() || !overlay.IsMap()) return overlay;
-    for (auto it = overlay.begin(); it != overlay.end(); ++it) {
-        base[it->first.as<std::string>()] = YAML::Clone(it->second);
+    for (auto& [key, val] : overlay.map_items()) {
+        base[key] = val.clone();
     }
     return base;
 }
 
-static std::vector<YAML::Node> expand_sweep_params(const YAML::Node& fixed_params, const YAML::Node& sweep) {
+static std::vector<Node> expand_sweep_params(const Node& fixed_params, const Node& sweep) {
     std::string mode = "product";
     std::vector<std::string> sweep_keys;
-    std::vector<std::vector<YAML::Node>> sweep_values;
+    std::vector<std::vector<Node>> sweep_values;
 
     if (sweep && sweep.IsMap()) {
-        if (sweep["mode"]) {
+        if (sweep.has("mode")) {
             mode = sweep["mode"].as<std::string>();
         }
-        for (auto it = sweep.begin(); it != sweep.end(); ++it) {
-            auto key = it->first.as<std::string>();
+        for (auto& [key, val] : sweep.map_items()) {
             if (key == "mode") continue;
-            if (it->second.IsSequence()) {
+            if (val.IsSequence()) {
                 sweep_keys.push_back(key);
-                std::vector<YAML::Node> vals;
-                for (auto v : it->second) {
-                    vals.push_back(YAML::Clone(v));
+                std::vector<Node> vals;
+                for (auto& v : val.seq_items()) {
+                    vals.push_back(v.clone());
                 }
                 sweep_values.push_back(vals);
             }
@@ -37,11 +38,11 @@ static std::vector<YAML::Node> expand_sweep_params(const YAML::Node& fixed_param
     }
 
     if (sweep_keys.empty()) {
-        YAML::Node merged = YAML::Clone(fixed_params);
+        Node merged = fixed_params.clone();
         return {merged};
     }
 
-    std::vector<YAML::Node> result;
+    std::vector<Node> result;
 
     if (mode == "zip") {
         size_t len = sweep_values[0].size();
@@ -51,18 +52,18 @@ static std::vector<YAML::Node> expand_sweep_params(const YAML::Node& fixed_param
             }
         }
         for (size_t i = 0; i < len; ++i) {
-            YAML::Node merged = YAML::Clone(fixed_params);
+            Node merged = fixed_params.clone();
             for (size_t j = 0; j < sweep_keys.size(); ++j) {
-                merged[sweep_keys[j]] = YAML::Clone(sweep_values[j][i]);
+                merged[sweep_keys[j]] = sweep_values[j][i].clone();
             }
             result.push_back(merged);
         }
     } else {
         std::vector<size_t> indices(sweep_keys.size(), 0);
         while (true) {
-            YAML::Node merged = YAML::Clone(fixed_params);
+            Node merged = fixed_params.clone();
             for (size_t i = 0; i < sweep_keys.size(); ++i) {
-                merged[sweep_keys[i]] = YAML::Clone(sweep_values[i][indices[i]]);
+                merged[sweep_keys[i]] = sweep_values[i][indices[i]].clone();
             }
             result.push_back(merged);
 
@@ -93,23 +94,22 @@ static generators::ConnectivityType parse_connectivity_type(const std::string& s
     throw std::runtime_error("Unknown connectivity_type: " + s);
 }
 
-static std::vector<int> parse_int_list(const YAML::Node& node) {
+static std::vector<int> parse_int_list(const Node& node) {
     std::vector<int> result;
     if (node.IsSequence()) {
-        for (auto v : node) result.push_back(v.as<int>());
+        for (auto& v : node.seq_items()) result.push_back(v.as<int>());
     } else {
         result.push_back(node.as<int>());
     }
     return result;
 }
 
-static Graph create_graph(const std::string& type, const YAML::Node& params) {
-    bool directed = params["directed"] ? params["directed"].as<bool>() : true;
+static Graph create_graph(const std::string& type, const Node& params) {
+    bool directed = params.has("directed") ? params["directed"].as<bool>() : true;
 
     if (type == "path") {
         int n = params["n"].as<int>();
-        auto g = generators::gen_path(n, directed);
-        return g;
+        return generators::gen_path(n, directed);
     }
     if (type == "circle") {
         int n = params["n"].as<int>();
@@ -117,14 +117,14 @@ static Graph create_graph(const std::string& type, const YAML::Node& params) {
     }
     if (type == "tree") {
         int n = params["n"].as<int>();
-        int br = params["branching_range"] ? params["branching_range"].as<int>() : 3;
+        int br = params.has("branching_range") ? params["branching_range"].as<int>() : 3;
         return generators::gen_tree(n, directed, br);
     }
     if (type == "grid") {
         int rows = params["rows"].as<int>();
         int cols = params["cols"].as<int>();
-        bool diag = params["allow_diagonals"] ? params["allow_diagonals"].as<bool>() : false;
-        bool tor = params["is_toroidal"] ? params["is_toroidal"].as<bool>() : false;
+        bool diag = params.has("allow_diagonals") ? params["allow_diagonals"].as<bool>() : false;
+        bool tor = params.has("is_toroidal") ? params["is_toroidal"].as<bool>() : false;
         return generators::gen_grid(rows, cols, directed, diag, tor);
     }
     if (type == "triangular_lattice") {
@@ -144,7 +144,7 @@ static Graph create_graph(const std::string& type, const YAML::Node& params) {
     }
     if (type == "k_partite") {
         auto sizes = parse_int_list(params["partition_sizes"]);
-        double prob = params["edge_probability"] ? params["edge_probability"].as<double>() : 1.0;
+        double prob = params.has("edge_probability") ? params["edge_probability"].as<double>() : 1.0;
         return generators::gen_k_partite(sizes, prob, directed);
     }
     if (type == "complete_k_partite") {
@@ -154,7 +154,7 @@ static Graph create_graph(const std::string& type, const YAML::Node& params) {
     }
     if (type == "planar") {
         int n = params["n"].as<int>();
-        double density = params["density"] ? params["density"].as<double>() : 1.0;
+        double density = params.has("density") ? params["density"].as<double>() : 1.0;
         return generators::gen_planar(n, density, directed);
     }
     if (type == "maximal_planar") {
@@ -163,16 +163,16 @@ static Graph create_graph(const std::string& type, const YAML::Node& params) {
     }
     if (type == "chordal") {
         int n = params["n"].as<int>();
-        int mcs = params["max_clique_size"] ? params["max_clique_size"].as<int>() : 5;
+        int mcs = params.has("max_clique_size") ? params["max_clique_size"].as<int>() : 5;
         return generators::gen_chordal(n, mcs, directed);
     }
     if (type == "random") {
         int n = params["n"].as<int>();
-        double density = params["density"] ? params["density"].as<double>() : 0.1;
-        int nc = params["num_components"] ? params["num_components"].as<int>() : 1;
-        auto ct = params["cycle_type"] ? parse_cycle_type(params["cycle_type"].as<std::string>()) : generators::CycleType::PositiveCycles;
-        auto cnt = params["connectivity_type"] ? parse_connectivity_type(params["connectivity_type"].as<std::string>()) : generators::ConnectivityType::StronglyConnected;
-        int tca = params["target_cycle_count_approx"] ? params["target_cycle_count_approx"].as<int>() : -1;
+        double density = params.has("density") ? params["density"].as<double>() : 0.1;
+        int nc = params.has("num_components") ? params["num_components"].as<int>() : 1;
+        auto ct = params.has("cycle_type") ? parse_cycle_type(params["cycle_type"].as<std::string>()) : generators::CycleType::PositiveCycles;
+        auto cnt = params.has("connectivity_type") ? parse_connectivity_type(params["connectivity_type"].as<std::string>()) : generators::ConnectivityType::StronglyConnected;
+        int tca = params.has("target_cycle_count_approx") ? params["target_cycle_count_approx"].as<int>() : -1;
         return generators::gen_random_graph(n, density, nc, ct, cnt, directed, tca);
     }
 
@@ -180,32 +180,33 @@ static Graph create_graph(const std::string& type, const YAML::Node& params) {
 }
 
 Config parse_config(const std::string& filename) {
-    YAML::Node root = YAML::LoadFile(filename);
+    Node root = LoadFile(filename);
     Config config;
 
-    if (!root["experiments"] || !root["experiments"].IsSequence()) {
+    if (!root.has("experiments") || !root["experiments"].IsSequence()) {
         throw std::runtime_error("Config must contain an 'experiments' sequence");
     }
 
-    for (const auto& exp_node : root["experiments"]) {
+    for (auto& exp_node : root["experiments"].seq_items()) {
         ExperimentConfig exp;
-        exp.name = exp_node["name"] ? exp_node["name"].as<std::string>() : "unnamed";
+        exp.name = exp_node.has("name") ? exp_node["name"].as<std::string>() : "unnamed";
 
-        auto gen = exp_node["generator"];
+        Node gen = exp_node["generator"];
         exp.generator_type = gen["type"].as<std::string>();
-        exp.params = gen["params"] ? gen["params"] : YAML::Node();
-        exp.sweep = gen["sweep"] ? gen["sweep"] : YAML::Node();
+        exp.params = gen.has("params") ? gen["params"].clone() : Node();
+        exp.sweep = gen.has("sweep") ? gen["sweep"].clone() : Node();
 
-        for (const auto& algo_node : exp_node["algorithms"]) {
+        for (auto& algo_node : exp_node["algorithms"].seq_items()) {
             AlgorithmConfig algo;
             algo.name = algo_node["name"].as<std::string>();
-            algo.start_node = algo_node["start_node"] ? algo_node["start_node"].as<int>() : 0;
+            algo.start_node = algo_node.has("start_node") ? algo_node["start_node"].as<int>() : 0;
             exp.algorithms.push_back(algo);
         }
 
-        if (exp_node["benchmark"]) {
-            exp.benchmark.iterations = exp_node["benchmark"]["iterations"] ? exp_node["benchmark"]["iterations"].as<int>() : 5;
-            exp.benchmark.warmup = exp_node["benchmark"]["warmup"] ? exp_node["benchmark"]["warmup"].as<int>() : 2;
+        if (exp_node.has("benchmark")) {
+            auto& bm = exp_node["benchmark"];
+            exp.benchmark.iterations = bm.has("iterations") ? bm["iterations"].as<int>() : 5;
+            exp.benchmark.warmup = bm.has("warmup") ? bm["warmup"].as<int>() : 2;
         }
 
         config.experiments.push_back(exp);
